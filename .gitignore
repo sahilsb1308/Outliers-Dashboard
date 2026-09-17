@@ -1,4 +1,9 @@
+config.py
 service_account.json
 run_shopify.bat
 logs.txt
 node_modules/
+__pycache__/
+*.pyc
+*.log
+.env

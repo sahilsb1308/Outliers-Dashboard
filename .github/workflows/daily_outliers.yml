@@ -1,0 +1,31 @@
+name: Daily Sales Outliers Report
+
+on:
+  schedule:
+    - cron: "30 6 * * *"  # 12:00pm IST (UTC+5:30)
+  workflow_dispatch:        # allow manual trigger from GitHub UI
+
+jobs:
+  run-outliers:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests gspread google-auth
+
+      - name: Run outliers script
+        env:
+          SHOPIFY_STORE:       ${{ secrets.SHOPIFY_STORE }}
+          TOKEN_API_URL:       ${{ secrets.TOKEN_API_URL }}
+          TOKEN_API_KEY:       ${{ secrets.TOKEN_API_KEY }}
+          SHEET_ID:            ${{ secrets.SHEET_ID }}
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+        run: python shopify_outliers.py
