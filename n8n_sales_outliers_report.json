@@ -1,5 +1,5 @@
 {
-  "name": "Swiss Beauty - Daily Sales Outliers Report",
+  "name": "Swiss Beauty - Daily Sales Outliers Email",
   "nodes": [
     {
       "parameters": {
@@ -7,26 +7,16 @@
           "interval": [
             {
               "field": "cronExpression",
-              "expression": "30 3 * * *"
+              "expression": "20 7 * * *"
             }
           ]
         }
       },
-      "id": "schedule-trigger",
-      "name": "Daily 9am IST",
+      "id": "node-schedule",
+      "name": "Daily 12:50pm IST",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.1,
-      "position": [240, 300]
-    },
-    {
-      "parameters": {
-        "command": "python \"C:\\Users\\Sahil Gaur\\Documents\\Ops and Inventory\\shopify_outliers.py\""
-      },
-      "id": "run-script",
-      "name": "Run Shopify Outliers Script",
-      "type": "n8n-nodes-base.executeCommand",
-      "typeVersion": 1,
-      "position": [460, 300]
+      "position": [200, 300]
     },
     {
       "parameters": {
@@ -43,11 +33,11 @@
         },
         "options": {}
       },
-      "id": "read-outliers",
+      "id": "node-outliers",
       "name": "Read Outliers Dashboard",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.4,
-      "position": [680, 300]
+      "position": [420, 200]
     },
     {
       "parameters": {
@@ -64,57 +54,72 @@
         },
         "options": {}
       },
-      "id": "read-yoy",
+      "id": "node-yoy",
       "name": "Read YoY Comparison",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.4,
-      "position": [680, 480]
+      "position": [420, 400]
     },
     {
       "parameters": {
-        "jsCode": "// Pull data from both sheets\nconst outliers = $('Read Outliers Dashboard').all().map(i => i.json);\nconst yoy      = $('Read YoY Comparison').all().map(i => i.json);\n\nconst today = new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric', timeZone:'Asia/Kolkata' });\n\n// Filter by flag\nconst fire    = outliers.filter(r => r['Flag'] === '🔥');\nconst spark   = outliers.filter(r => r['Flag'] === '⚡');\nconst growing = outliers.filter(r => r['Flag'] === '📈');\nconst drop    = outliers.filter(r => r['Flag'] === '📉');\n\nconst yoyFire = yoy.filter(r => r['Flag'] === '🔥');\nconst yoyDrop = yoy.filter(r => r['Flag'] === '📉');\n\nfunction fmt(rows, cols) {\n  if (!rows.length) return '<tr><td colspan=\"4\" style=\"color:#888\">None today</td></tr>';\n  return rows.slice(0,10).map(r =>\n    `<tr>${cols.map(c => `<td style=\"padding:4px 10px;border-bottom:1px solid #eee\">${r[c] || '-'}</td>`).join('')}</tr>`\n  ).join('');\n}\n\nconst html = `\n<html><body style=\"font-family:Arial,sans-serif;color:#222;max-width:800px;margin:auto;\">\n<h2 style=\"background:#111;color:#fff;padding:14px 20px;border-radius:6px\">Swiss Beauty - Daily Sales Outliers - ${today}</h2>\n\n<p style=\"color:#555\">Script fetched live Shopify data. Sheet: <a href=\"https://docs.google.com/spreadsheets/d/1fMV0KVGkq53evsv7mffxmjSwbwDNYVpgq3CRPHkSOZ8\">Open Google Sheet</a></p>\n\n<h3>🔥 Confirmed Spikes Today (${fire.length})</h3>\n<p style=\"color:#888;font-size:12px\">7D uplift > 100% AND positive across all comparison windows</p>\n<table width=\"100%\" cellspacing=\"0\" style=\"border-collapse:collapse\">\n  <tr style=\"background:#f5f5f5\"><th style=\"padding:6px 10px;text-align:left\">Product</th><th>Units Today</th><th>Revenue (INR)</th><th>vs 7D</th></tr>\n  ${fmt(fire, ['Product','Units Sold Today','Revenue Today (INR)','vs 7D (Units %)'])}\n</table>\n\n<h3 style=\"margin-top:20px\">⚡ Recent Burst (${spark.length})</h3>\n<p style=\"color:#888;font-size:12px\">Strong 7D spike but weaker in longer windows - short term momentum</p>\n<table width=\"100%\" cellspacing=\"0\" style=\"border-collapse:collapse\">\n  <tr style=\"background:#f5f5f5\"><th style=\"padding:6px 10px;text-align:left\">Product</th><th>Units Today</th><th>Revenue (INR)</th><th>vs 7D</th></tr>\n  ${fmt(spark, ['Product','Units Sold Today','Revenue Today (INR)','vs 7D (Units %)'])}\n</table>\n\n<h3 style=\"margin-top:20px\">📈 Growing (${growing.length})</h3>\n<p style=\"color:#888;font-size:12px\">Positive uplift in 3+ of 4 time windows</p>\n<table width=\"100%\" cellspacing=\"0\" style=\"border-collapse:collapse\">\n  <tr style=\"background:#f5f5f5\"><th style=\"padding:6px 10px;text-align:left\">Product</th><th>Units Today</th><th>Revenue (INR)</th><th>vs 7D</th></tr>\n  ${fmt(growing, ['Product','Units Sold Today','Revenue Today (INR)','vs 7D (Units %)'])}\n</table>\n\n<h3 style=\"margin-top:20px\">📉 Declining Today (${drop.length})</h3>\n<p style=\"color:#888;font-size:12px\">Negative uplift in 3+ of 4 time windows</p>\n<table width=\"100%\" cellspacing=\"0\" style=\"border-collapse:collapse\">\n  <tr style=\"background:#f5f5f5\"><th style=\"padding:6px 10px;text-align:left\">Product</th><th>Units Today</th><th>Revenue (INR)</th><th>vs 7D</th></tr>\n  ${fmt(drop, ['Product','Units Sold Today','Revenue Today (INR)','vs 7D (Units %)'])}\n</table>\n\n<hr style=\"margin:30px 0;border:none;border-top:1px solid #eee\">\n<h3>YoY Highlights</h3>\n<table width=\"100%\" cellspacing=\"0\" style=\"border-collapse:collapse\">\n  <tr style=\"background:#f5f5f5\"><th style=\"padding:6px 10px;text-align:left\">Product</th><th>This Month Units</th><th>Same Month LY</th><th>Month Uplift</th></tr>\n  ${fmt(yoyFire.slice(0,5), ['Product','This Month Units','Same Month LY Units','Month YoY Uplift (Units %)'])}\n</table>\n\n<p style=\"margin-top:30px;color:#aaa;font-size:11px\">Auto-generated by Swiss Beauty Sales Outliers automation. Data pulled from Shopify via Bulk Operations API.</p>\n</body></html>\n`;\n\nreturn [{ json: { html, today, counts: { fire: fire.length, spark: spark.length, growing: growing.length, drop: drop.length } } }];"
+        "mode": "passThrough",
+        "output": "input1"
       },
-      "id": "format-report",
-      "name": "Format Email Report",
+      "id": "node-merge",
+      "name": "Merge Sheets",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const outliers = $('Read Outliers Dashboard').all().map(i => i.json);\nconst yoy      = $('Read YoY Comparison').all().map(i => i.json);\n\nconst today = new Date().toLocaleDateString('en-IN', {\n  day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata'\n});\n\nconst fire    = outliers.filter(r => r['Flag'] === '🔥');\nconst spark   = outliers.filter(r => r['Flag'] === '⚡');\nconst growing = outliers.filter(r => r['Flag'] === '📈');\nconst drop    = outliers.filter(r => r['Flag'] === '📉');\nconst yoyFire = yoy.filter(r => r['Flag'] === '🔥');\nconst yoyDrop = yoy.filter(r => r['Flag'] === '📉');\n\nconst SHEET = 'https://docs.google.com/spreadsheets/d/1fMV0KVGkq53evsv7mffxmjSwbwDNYVpgq3CRPHkSOZ8';\n\nconst css = `\n  body { margin:0; padding:0; background:#f4f4f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; }\n  .wrap { max-width:680px; margin:32px auto; background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 2px 12px rgba(0,0,0,0.08); }\n  .header { background:#111; padding:24px 32px; }\n  .header h1 { margin:0; color:#fff; font-size:20px; font-weight:700; }\n  .header p { margin:6px 0 0; color:#aaa; font-size:13px; }\n  .body { padding:28px 32px; }\n  .section-title { font-size:15px; font-weight:700; margin:24px 0 10px; display:flex; align-items:center; gap:8px; }\n  .badge { display:inline-block; font-size:11px; font-weight:600; padding:2px 8px; border-radius:20px; margin-left:6px; }\n  .badge-red { background:#fee2e2; color:#b91c1c; }\n  .badge-green { background:#dcfce7; color:#15803d; }\n  .badge-blue { background:#dbeafe; color:#1d4ed8; }\n  .badge-gray { background:#f1f5f9; color:#475569; }\n  table { width:100%; border-collapse:collapse; font-size:13px; }\n  th { background:#f8fafc; padding:8px 12px; text-align:left; font-weight:600; color:#64748b; border-bottom:2px solid #e2e8f0; }\n  td { padding:8px 12px; border-bottom:1px solid #f1f5f9; color:#1e293b; }\n  tr:last-child td { border-bottom:none; }\n  .empty { color:#94a3b8; font-style:italic; padding:12px; text-align:center; }\n  .footer { background:#f8fafc; padding:16px 32px; text-align:center; font-size:11px; color:#94a3b8; border-top:1px solid #e2e8f0; }\n  .btn { display:inline-block; margin-top:6px; padding:8px 20px; background:#111; color:#fff; text-decoration:none; border-radius:6px; font-size:13px; font-weight:600; }\n`;\n\nfunction tableRows(rows, cols) {\n  if (!rows.length) return `<tr><td colspan=\"${cols.length}\" class=\"empty\">None today</td></tr>`;\n  return rows.slice(0, 10).map(r =>\n    `<tr>${cols.map(c => `<td>${r[c] !== undefined ? r[c] : '-'}</td>`).join('')}</tr>`\n  ).join('');\n}\n\nfunction section(emoji, title, badgeClass, count, cols, rows) {\n  return `\n    <div class=\"section-title\">${emoji} ${title} <span class=\"badge ${badgeClass}\">${count}</span></div>\n    <table>\n      <tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr>\n      ${tableRows(rows, cols)}\n    </table>`;\n}\n\nconst html = `<!DOCTYPE html>\n<html><head><meta charset=\"UTF-8\"><style>${css}</style></head>\n<body>\n<div class=\"wrap\">\n  <div class=\"header\">\n    <h1>Swiss Beauty - Sales Outliers</h1>\n    <p>${today} &nbsp;|&nbsp; Auto-generated report</p>\n  </div>\n  <div class=\"body\">\n    <p style=\"margin:0 0 20px;color:#64748b;font-size:13px;\">\n      <a href=\"${SHEET}\" style=\"color:#2563eb;font-weight:600;\">Open Full Google Sheet</a>\n    </p>\n\n    ${section('🔥', 'Confirmed Spikes', 'badge-red', fire.length,\n      ['Product', 'Units - Last 7D', '7D vs Prior 7D (Units %)', '7D vs Prior 7D (Rev %)'],\n      fire)}\n\n    ${section('⚡', 'Recent Burst', 'badge-blue', spark.length,\n      ['Product', 'Units - Last 7D', '7D vs Prior 7D (Units %)', '1M vs Prior 1M (Units %)'],\n      spark)}\n\n    ${section('📈', 'Growing', 'badge-green', growing.length,\n      ['Product', 'Units - Last 7D', '7D vs Prior 7D (Units %)', '1Q vs Prior 1Q (Units %)'],\n      growing)}\n\n    ${section('📉', 'Declining', 'badge-gray', drop.length,\n      ['Product', 'Units - Last 7D', '7D vs Prior 7D (Units %)', '1Q vs Prior 1Q (Units %)'],\n      drop)}\n\n    <hr style=\"margin:28px 0;border:none;border-top:1px solid #e2e8f0;\">\n    <div class=\"section-title\">📅 YoY Highlights</div>\n    <table>\n      <tr><th>Product</th><th>Flag</th><th>Month YoY (Units %)</th><th>Quarter YoY (Units %)</th></tr>\n      ${yoyFire.length + yoyDrop.length === 0\n        ? '<tr><td colspan=\"4\" class=\"empty\">No strong YoY signals today</td></tr>'\n        : tableRows([...yoyFire, ...yoyDrop].slice(0,8),\n            ['Product', 'Flag', 'Month YoY Uplift (Units %)', 'Quarter YoY Uplift (Units %)'])}\n    </table>\n  </div>\n  <div class=\"footer\">\n    Auto-generated by Swiss Beauty Sales Outliers automation &nbsp;|&nbsp;\n    <a href=\"${SHEET}\" style=\"color:#2563eb;\">View Sheet</a>\n  </div>\n</div>\n</body></html>`;\n\nconst subject = `Swiss Beauty Outliers - ${today} | 🔥${fire.length} Spikes  ⚡${spark.length} Bursts  📉${drop.length} Drops`;\n\nreturn [{ json: { html, subject, today,\n  counts: { fire: fire.length, spark: spark.length, growing: growing.length, drop: drop.length }\n} }];"
+      },
+      "id": "node-format",
+      "name": "Format Email HTML",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [900, 380]
+      "position": [860, 300]
     },
     {
       "parameters": {
-        "fromEmail": "sahil.gaur@swissbeauty.in",
-        "toEmail": "sahil.gaur@swissbeauty.in",
-        "subject": "=Swiss Beauty Sales Outliers - {{ $json.today }} - 🔥{{ $json.counts.fire }} Spikes / 📉{{ $json.counts.drop }} Drops",
-        "emailFormat": "html",
-        "message": "={{ $json.html }}"
+        "sendTo": "sahil.gaur@swissbeauty.in",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {}
       },
-      "id": "send-email",
-      "name": "Send Email Report",
-      "type": "n8n-nodes-base.emailSend",
+      "id": "node-gmail",
+      "name": "Send via Gmail",
+      "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
-      "position": [1120, 380]
+      "position": [1080, 300],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
     }
   ],
   "connections": {
-    "Daily 9am IST": {
-      "main": [[{ "node": "Run Shopify Outliers Script", "type": "main", "index": 0 }]]
-    },
-    "Run Shopify Outliers Script": {
-      "main": [
-        [
-          { "node": "Read Outliers Dashboard", "type": "main", "index": 0 },
-          { "node": "Read YoY Comparison",     "type": "main", "index": 0 }
-        ]
-      ]
+    "Daily 12:50pm IST": {
+      "main": [[
+        { "node": "Read Outliers Dashboard", "type": "main", "index": 0 },
+        { "node": "Read YoY Comparison",     "type": "main", "index": 0 }
+      ]]
     },
     "Read Outliers Dashboard": {
-      "main": [[{ "node": "Format Email Report", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Merge Sheets", "type": "main", "index": 0 }]]
     },
     "Read YoY Comparison": {
-      "main": [[{ "node": "Format Email Report", "type": "main", "index": 1 }]]
+      "main": [[{ "node": "Merge Sheets", "type": "main", "index": 1 }]]
     },
-    "Format Email Report": {
-      "main": [[{ "node": "Send Email Report", "type": "main", "index": 0 }]]
+    "Merge Sheets": {
+      "main": [[{ "node": "Format Email HTML", "type": "main", "index": 0 }]]
+    },
+    "Format Email HTML": {
+      "main": [[{ "node": "Send via Gmail", "type": "main", "index": 0 }]]
     }
   },
   "active": false,

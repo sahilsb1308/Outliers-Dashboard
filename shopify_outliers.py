@@ -307,47 +307,71 @@ def phase1(sh, today):
 
     header = [
         "Product", "SKU", "Flag",
-        "Units - Last 7D", "Revenue - Last 7D (INR)", "7D vs Prior 7D (Units %)", "7D vs Prior 7D (Rev %)",
-        "Units - Last 15D", "Revenue - Last 15D (INR)", "15D vs Prior 15D (Units %)", "15D vs Prior 15D (Rev %)",
-        "Units - Last 1M", "Revenue - Last 1M (INR)", "1M vs Prior 1M (Units %)", "1M vs Prior 1M (Rev %)",
-        "Units - Last 1Q", "Revenue - Last 1Q (INR)", "1Q vs Prior 1Q (Units %)", "1Q vs Prior 1Q (Rev %)",
+        "DRR - Units", "DRR - Revenue", "Rev%/day",
+        "Units 7D", "Rev 7D (INR)", "7D Units %", "7D Rev %", "Rev % / 7D",
+        "Units 15D", "Rev 15D (INR)", "15D Units %", "15D Rev %", "Rev % / 15D",
+        "Units 1M", "Rev 1M (INR)", "1M Units %", "1M Rev %",
+        "Units 1Q", "Rev 1Q (INR)", "1Q Units %", "1Q Rev %",
     ]
-    rows = []
+
+    # First pass — collect window data for products sold today
+    pw = {}
     for pid, p in products.items():
         bd = p["by_date"]
-        tu, tr = bd.get(today.isoformat(), [0, 0.0])
-
-        # Only show products that sold today
+        tu, _ = bd.get(today.isoformat(), [0, 0.0])
         if tu == 0:
             continue
-
-        # Current windows (excluding today)
         c7u,  c7r  = span_totals(bd, c7_start,  c7_end)
         c15u, c15r = span_totals(bd, c15_start, c15_end)
         cmu,  cmr  = span_totals(bd, cm_start,  cm_end)
         cqu,  cqr  = span_totals(bd, cq_start,  cq_end)
-
-        # Prior windows
         p7u,  p7r  = span_totals(bd, p7_start,  p7_end)
         p15u, p15r = span_totals(bd, p15_start, p15_end)
         pmu,  pmr  = span_totals(bd, pm_start,  pm_end)
         pqu,  pqr  = span_totals(bd, pq_start,  pq_end)
+        pw[pid] = dict(p=p, c7u=c7u, c7r=c7r, c15u=c15u, c15r=c15r,
+                       cmu=cmu, cmr=cmr, cqu=cqu, cqr=cqr,
+                       p7u=p7u, p7r=p7r, p15u=p15u, p15r=p15r,
+                       pmu=pmu, pmr=pmr, pqu=pqu, pqr=pqr)
+
+    # Store-wide totals for revenue share columns
+    total_c7r  = sum(v["c7r"]  for v in pw.values()) or 1
+    total_c15r = sum(v["c15r"] for v in pw.values()) or 1
+
+    rows = []
+    for pid, w in pw.items():
+        p = w["p"]
+        c7u, c7r   = w["c7u"], w["c7r"]
+        c15u, c15r = w["c15u"], w["c15r"]
+        cmu,  cmr  = w["cmu"],  w["cmr"]
+        cqu,  cqr  = w["cqu"],  w["cqr"]
+        p7u, p7r   = w["p7u"],  w["p7r"]
+        p15u, p15r = w["p15u"], w["p15r"]
+        pmu,  pmr  = w["pmu"],  w["pmr"]
+        pqu,  pqr  = w["pqu"],  w["pqr"]
 
         s7  = fmt(uplift(c7u,  p7u))
         s15 = fmt(uplift(c15u, p15u))
         sm  = fmt(uplift(cmu,  pmu))
         sq  = fmt(uplift(cqu,  pqu))
+
+        drr_u       = round(c7u / 7, 1)
+        drr_r       = int(round(c7r / 7))
+        rev_pct_7d  = f"{c7r  / total_c7r  * 100:.2f}%"
+        rev_pct_15d = f"{c15r / total_c15r * 100:.2f}%"
+
         rows.append([
             p["title"], p["sku"],
             consensus_flag(parse_pct(s7), parse_pct(s15), parse_pct(sm), parse_pct(sq)),
-            fmt_units(c7u),  fmt_rev(c7r),  s7,  fmt(uplift(c7r,  p7r)),
-            fmt_units(c15u), fmt_rev(c15r), s15, fmt(uplift(c15r, p15r)),
+            drr_u, drr_r, rev_pct_7d,
+            fmt_units(c7u),  fmt_rev(c7r),  s7,  fmt(uplift(c7r,  p7r)),  rev_pct_7d,
+            fmt_units(c15u), fmt_rev(c15r), s15, fmt(uplift(c15r, p15r)), rev_pct_15d,
             fmt_units(cmu),  fmt_rev(cmr),  sm,  fmt(uplift(cmr,  pmr)),
             fmt_units(cqu),  fmt_rev(cqr),  sq,  fmt(uplift(cqr,  pqr)),
         ])
 
     def sort_key(r):
-        v = r[5]  # 7D vs Prior 7D (Units %)
+        v = r[8]  # 7D Units % (index shifts due to new DRR columns)
         if v in ("–", "NA"): return -9999
         try: return float(v.replace("%","").replace("+",""))
         except: return 0
