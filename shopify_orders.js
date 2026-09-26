@@ -1536,14 +1536,14 @@ async function writeMotherWHStock(token) {
   for (let i = 0; i < d2cSkus.length; i++) {
     const sku = d2cSkus[i];
     const row = i + 2;
-    if (!sku) { afData.push({ range: `${D2C_TAB}!AF${row}`, values: [[""]] }); continue; }
+    if (!sku) { afData.push({ range: `${D2C_TAB}!${MOTHER_WH_COL}${row}`, values: [[""]] }); continue; }
 
     const s = findStock(sku);
     const value = s !== null ? s : "";
     if (s !== null) found++; else notFound++;
 
 
-    afData.push({ range: `${D2C_TAB}!AF${row}`, values: [[value]] });
+    afData.push({ range: `${D2C_TAB}!${MOTHER_WH_COL}${row}`, values: [[value]] });
   }
 
   // 4. Force NUMBER format on AE (col index 30) to prevent date-serial rendering
