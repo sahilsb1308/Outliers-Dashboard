@@ -14,7 +14,7 @@ Calculates and writes all derived columns to the Inventory Dashboard sheet:
   T  – Total Available Stock        = U + H + I
   AB – Priority                     = derived from Q, P, AC
   AC – Revenue Contribution %       = (M / SUM(M)) × 100
-  AD – Fill Rate                    = (J + U) / S
+  AD – Units to be Filled           = MAX(0, Y − U)
 
 Column indices (0-based, matched to actual sheet layout):
   B=1  H=7  I=8  J=9  K=10  L=11  M=12  P=15  Q=16
@@ -63,7 +63,7 @@ COL_PROJ_REV    = 25  # Z  – Projected Revenue 30d (output)
 COL_STOCK_STATUS = 26 # AA – Stock Status (output)
 COL_PRIORITY    = 27  # AB – Priority (output)
 COL_REV_CONTRIB = 28  # AC – Revenue Contribution % (output)
-COL_FILL_RATE   = 29  # AD – Fill Rate (output)
+COL_UNITS_FILL  = 29  # AD – Units to be Filled (output)
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -231,7 +231,7 @@ def main():
                         drr_results, doi_results, demand_7d_results, demand_results,
                         proj_rev_results, stock_status_results, priority_results,
                         rev_contrib_results, fill_rate_results):
-                lst.append(blank)
+                lst.append(blank)  # fill_rate_results = units_fill here
             continue
 
         norm_sku = normalize_sku(sku)
@@ -272,10 +272,6 @@ def main():
         multiplier = calc_multiplier(npd_flag, promo_q, is_bestseller, computed_priority)
         multiplier_results.append([multiplier])
 
-        # AD – Fill Rate = (J + U) / S
-        fill_rate = round((k_val + g_val) / s_val, 4) if s_val != 0 else 0
-        fill_rate_results.append([fill_rate])
-
         is_child = norm_sku in child_to_kits
 
         # Rule 1: no DRR and not a kit child → blank derived columns
@@ -285,6 +281,7 @@ def main():
             demand_7d_results.append(blank)
             demand_results.append(blank)
             proj_rev_results.append(blank)
+            fill_rate_results.append(blank)
             continue
 
         # Rule 2: kit parent → 0 demand
@@ -294,6 +291,7 @@ def main():
             demand_7d_results.append([0])
             demand_results.append([0])
             proj_rev_results.append([0])
+            fill_rate_results.append([0])
             continue
 
         # Kit DRR contribution: sum the raw DRR of each parent kit so that
@@ -331,6 +329,9 @@ def main():
         asp = round(n_val / k_val, 4) if k_val > 0 else 0
         proj_rev = round(demand_30d * asp, 2)
         proj_rev_results.append([proj_rev])
+
+        # AD – Units to be Filled = MAX(0, Y − U)
+        fill_rate_results.append([max(0, demand_30d - g_val)])
 
     # ── Batch write all output columns ────────────────────────────────────────
     n_rows   = len(drr_results)
