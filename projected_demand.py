@@ -15,12 +15,11 @@ Calculates and writes all derived columns to the Inventory Dashboard sheet:
   AB – Priority                     = derived from Q, P, AC
   AC – Revenue Contribution %       = (M / SUM(M)) × 100
   AD – Fill Rate                    = (J + U) / S
-  AE – Units to be Filled           = MAX(0, Y − U)
 
 Column indices (0-based, matched to actual sheet layout):
   B=1  H=7  I=8  J=9  K=10  L=11  M=12  P=15  Q=16
   R=17 S=18 T=19 U=20 V=21  W=22  X=23  Y=24  Z=25
-  AA=26 AB=27 AC=28 AD=29 AE=30
+  AA=26 AB=27 AC=28 AD=29
 
 Usage:
   pip install gspread google-auth
@@ -65,7 +64,6 @@ COL_STOCK_STATUS = 26 # AA – Stock Status (output)
 COL_PRIORITY    = 27  # AB – Priority (output)
 COL_REV_CONTRIB = 28  # AC – Revenue Contribution % (output)
 COL_FILL_RATE   = 29  # AD – Fill Rate (output)
-COL_UNITS_FILL  = 30  # AE – Units to be Filled (output)
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -223,7 +221,6 @@ def main():
     priority_results   = []
     rev_contrib_results = []
     fill_rate_results  = []
-    units_fill_results = []
 
     blank = [""]
 
@@ -233,7 +230,7 @@ def main():
             for lst in (multiplier_results, bestseller_results, total_stock_results,
                         drr_results, doi_results, demand_7d_results, demand_results,
                         proj_rev_results, stock_status_results, priority_results,
-                        rev_contrib_results, fill_rate_results, units_fill_results):
+                        rev_contrib_results, fill_rate_results):
                 lst.append(blank)
             continue
 
@@ -288,7 +285,6 @@ def main():
             demand_7d_results.append(blank)
             demand_results.append(blank)
             proj_rev_results.append(blank)
-            units_fill_results.append(blank)
             continue
 
         # Rule 2: kit parent → 0 demand
@@ -298,7 +294,6 @@ def main():
             demand_7d_results.append([0])
             demand_results.append([0])
             proj_rev_results.append([0])
-            units_fill_results.append([0])
             continue
 
         # Kit DRR contribution: sum the raw DRR of each parent kit so that
@@ -337,10 +332,6 @@ def main():
         proj_rev = round(demand_30d * asp, 2)
         proj_rev_results.append([proj_rev])
 
-        # AE – Units to be Filled
-        units_fill = max(0, demand_30d - g_val)
-        units_fill_results.append([round(units_fill, 2)])
-
     # ── Batch write all output columns ────────────────────────────────────────
     n_rows   = len(drr_results)
     last_row = DATA_START_ROW + n_rows - 1
@@ -358,7 +349,6 @@ def main():
         "AB": priority_results,
         "AC": rev_contrib_results,
         "AD": fill_rate_results,
-        "AE": units_fill_results,
     }
 
     updates = []

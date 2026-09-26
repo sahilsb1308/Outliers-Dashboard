@@ -1557,12 +1557,6 @@ async function writeMotherWHStock(token) {
     { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
   ));
 
-  // Clear stale AE data left over from old runs (AE is now owned by projected_demand.py)
-  await withRetry(() => httpsRequest("POST",
-    `https://sheets.googleapis.com/v4/spreadsheets/${D2C_SHEET_ID}/values:batchClear`,
-    JSON.stringify({ ranges: [`${D2C_TAB}!AE2:AE2000`] }),
-    { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
-  ));
 
   // Write AF header + values in chunks (RAW to avoid date auto-interpretation)
   await withRetry(() => httpsRequest("POST",
