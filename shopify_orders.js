@@ -48,7 +48,7 @@ const D2C_TAB_GID          = 599219316;
 const MOTHER_WH_SRC_ID     = "1daV5kSvAf19z0LqZ9PKT2Vbae5rhULmi8qcNUEqAL4I";
 const MOTHER_WH_SRC_TAB    = "Inventory Dashboard";
 const MOTHER_WH_SRC_START  = 5;   // source data starts at row 5
-const MOTHER_WH_COL        = "AF";
+const MOTHER_WH_COL        = "AE";
 
 // ─── Focus Allocation sheet (separate spreadsheet) ───────────────────────────
 const FOCUS_SHEET_ID = "1OAJblwHn0Twxgzfr-MoncAmC1ED-KtN1fzchR53a7AI";
@@ -85,9 +85,9 @@ const STOCK_STATUS_COL     = "AA";  // Stock Status (output)
 const PRIORITY_COL         = "AB";  // Priority P0–P3 (output)
 const REV_CONTRIB_COL      = "AC";  // Revenue Contribution %
 // AE (Units to be Filled) is written by projected_demand.py, not here
-const TOTAL_SOLD_15D_COL   = "AI";  // Total Sold (15D)
-const DRR_15D_COL          = "AJ";  // DRR (15D) = Total Sold 15D / 15
-const NPD_START_DATE_COL   = "AK";  // NPD Start Date — stamped on first NPD; cleared on expiry
+const TOTAL_SOLD_15D_COL   = "AH";  // Total Sold (15D)
+const DRR_15D_COL          = "AI";  // DRR (15D) = Total Sold 15D / 15
+const NPD_START_DATE_COL   = "AJ";  // NPD Start Date — stamped on first NPD; cleared on expiry
 const DATA_START_ROW       = 2;
 
 // ─── Date range ──────────────────────────────────────────────────────────────
@@ -962,7 +962,7 @@ async function syncNpdFlags(token, skuRows, npdSkus) {
     const sheets    = JSON.parse(metaRes.body).sheets ?? [];
     const mainSheet = sheets.find(s => s.properties.sheetId === D2C_TAB_GID);
     const colCount  = mainSheet?.properties?.gridProperties?.columnCount ?? 0;
-    const NEED      = 37; // AK = column 37 (1-based)
+    const NEED      = 36; // AJ = column 36 (1-based)
     if (colCount < NEED) {
       await withRetry(() => httpsRequest("POST",
         `https://sheets.googleapis.com/v4/spreadsheets/${D2C_SHEET_ID}:batchUpdate`,
@@ -1178,7 +1178,7 @@ async function syncNpdExpiry_REMOVED(token, skuRows) {
     const sheets    = JSON.parse(metaRes.body).sheets ?? [];
     const mainSheet = sheets.find(s => s.properties.sheetId === D2C_TAB_GID);
     const colCount  = mainSheet?.properties?.gridProperties?.columnCount ?? 0;
-    const NEED      = 37; // AK = column 37 (1-based)
+    const NEED      = 36; // AJ = column 36 (1-based)
     if (colCount < NEED) {
       await withRetry(() => httpsRequest(
         "POST",
@@ -1546,22 +1546,21 @@ async function writeMotherWHStock(token) {
     afData.push({ range: `${D2C_TAB}!AF${row}`, values: [[value]] });
   }
 
-  // 4. Force NUMBER format on AE+AF (col indices 30–31) to prevent date-serial rendering
+  // 4. Force NUMBER format on AE (col index 30) to prevent date-serial rendering
   await withRetry(() => httpsRequest("POST",
     `https://sheets.googleapis.com/v4/spreadsheets/${D2C_SHEET_ID}:batchUpdate`,
     JSON.stringify({ requests: [{ repeatCell: {
-      range: { sheetId: D2C_TAB_GID, startRowIndex: 1, endRowIndex: 2000, startColumnIndex: 30, endColumnIndex: 32 },
+      range: { sheetId: D2C_TAB_GID, startRowIndex: 1, endRowIndex: 2000, startColumnIndex: 30, endColumnIndex: 31 },
       cell: { userEnteredFormat: { numberFormat: { type: "NUMBER", pattern: "0" } } },
       fields: "userEnteredFormat.numberFormat"
     }}]}),
     { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
   ));
 
-
-  // Write AF header + values in chunks (RAW to avoid date auto-interpretation)
+  // Write AE header + values in chunks (RAW to avoid date auto-interpretation)
   await withRetry(() => httpsRequest("POST",
     `https://sheets.googleapis.com/v4/spreadsheets/${D2C_SHEET_ID}/values:batchUpdate`,
-    JSON.stringify({ valueInputOption: "RAW", data: [{ range: `${D2C_TAB}!AF1`, values: [["Mother Warehouse Total Inventory"]] }] }),
+    JSON.stringify({ valueInputOption: "RAW", data: [{ range: `${D2C_TAB}!AE1`, values: [["Mother Warehouse Total Inventory"]] }] }),
     { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
   ));
 
@@ -1574,12 +1573,12 @@ async function writeMotherWHStock(token) {
     ));
   }
 
-  console.log(`  ✓ AF written: ${afData.length} rows — ${found} matched, ${notFound} not found in source`);
+  console.log(`  ✓ AE written: ${afData.length} rows — ${found} matched, ${notFound} not found in source`);
 }
 
 // ─── 7-day sold + DRR → D2C sheet cols AG / AH ───────────────────────────────
 // Uses dailyUnits already in salesMap (no extra Shopify API call).
-// Writes AG = Total Sold (7d), AH = DRR (7d) = AG / 7.
+// Writes AF = Total Sold (7d), AG = DRR (7d) = AF / 7.
 async function write7dColumns(token, salesMap, skuTranslation) {
   const d2cRes = await withRetry(() => httpsGet(
     `https://sheets.googleapis.com/v4/spreadsheets/${D2C_SHEET_ID}/values/${encodeURIComponent(`${D2C_TAB}!B2:B2000`)}`,
@@ -1618,14 +1617,14 @@ async function write7dColumns(token, salesMap, skuTranslation) {
 
   const lastRow = d2cSkus.length + 1;
 
-  // Expand sheet to at least 37 columns (AK) if needed
+  // Expand sheet to at least 36 columns (AJ) if needed
   const metaRes = await withRetry(() => httpsGet(
     `https://sheets.googleapis.com/v4/spreadsheets/${D2C_SHEET_ID}?fields=sheets(properties(sheetId,gridProperties))`,
     { Authorization: `Bearer ${token}` }
   ));
   const d2cSheet = (JSON.parse(metaRes.body).sheets ?? []).find(s => s.properties.sheetId === D2C_TAB_GID);
   const colCount = d2cSheet?.properties?.gridProperties?.columnCount ?? 0;
-  const NEEDED = 37; // through AK
+  const NEEDED = 36; // through AJ
   if (colCount < NEEDED) {
     await withRetry(() => httpsRequest("POST",
       `https://sheets.googleapis.com/v4/spreadsheets/${D2C_SHEET_ID}:batchUpdate`,
@@ -1635,11 +1634,11 @@ async function write7dColumns(token, salesMap, skuTranslation) {
     console.log(`  Expanded sheet from ${colCount} to ${NEEDED} columns`);
   }
 
-  // Force NUMBER format on AI and AJ to prevent date auto-formatting (columns were previously date-typed)
+  // Force NUMBER format on AH and AI to prevent date auto-formatting
   await withRetry(() => httpsRequest("POST",
     `https://sheets.googleapis.com/v4/spreadsheets/${D2C_SHEET_ID}:batchUpdate`,
     JSON.stringify({ requests: [{ repeatCell: {
-      range: { sheetId: D2C_TAB_GID, startRowIndex: 1, endRowIndex: 2000, startColumnIndex: 34, endColumnIndex: 36 },
+      range: { sheetId: D2C_TAB_GID, startRowIndex: 1, endRowIndex: 2000, startColumnIndex: 33, endColumnIndex: 35 },
       cell: { userEnteredFormat: { numberFormat: { type: "NUMBER", pattern: "0" } } },
       fields: "userEnteredFormat.numberFormat"
     }}]}),
@@ -1649,21 +1648,21 @@ async function write7dColumns(token, salesMap, skuTranslation) {
   const writeRes = await withRetry(() => httpsRequest("POST",
     `https://sheets.googleapis.com/v4/spreadsheets/${D2C_SHEET_ID}/values:batchUpdate`,
     JSON.stringify({ valueInputOption: "RAW", data: [
-      { range: `${D2C_TAB}!AG1`, values: [["Total Sold (7d)"]] },
-      { range: `${D2C_TAB}!AH1`, values: [["DRR (7d)"]] },
-      { range: `${D2C_TAB}!AI1`, values: [["Total Sold (15d)"]] },
-      { range: `${D2C_TAB}!AJ1`, values: [["DRR (15d)"]] },
-      { range: `${D2C_TAB}!AG2:AG${lastRow}`, values: agValues },
-      { range: `${D2C_TAB}!AH2:AH${lastRow}`, values: ahValues },
-      { range: `${D2C_TAB}!AI2:AI${lastRow}`, values: aiValues },
-      { range: `${D2C_TAB}!AJ2:AJ${lastRow}`, values: ajValues },
+      { range: `${D2C_TAB}!AF1`, values: [["Total Sold (7d)"]] },
+      { range: `${D2C_TAB}!AG1`, values: [["DRR (7d)"]] },
+      { range: `${D2C_TAB}!AH1`, values: [["Total Sold (15d)"]] },
+      { range: `${D2C_TAB}!AI1`, values: [["DRR (15d)"]] },
+      { range: `${D2C_TAB}!AF2:AF${lastRow}`, values: agValues },
+      { range: `${D2C_TAB}!AG2:AG${lastRow}`, values: ahValues },
+      { range: `${D2C_TAB}!AH2:AH${lastRow}`, values: aiValues },
+      { range: `${D2C_TAB}!AI2:AI${lastRow}`, values: ajValues },
     ]}),
     { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
   ));
   const writeResult = JSON.parse(writeRes.body);
-  if (writeResult.error) throw new Error(`AG/AH/AI/AJ write failed: ${writeRes.body}`);
+  if (writeResult.error) throw new Error(`AF/AG/AH/AI write failed: ${writeRes.body}`);
 
-  console.log(`  ✓ AG–AJ written — ${written} SKUs had 7d sales (window: ${D7_AGO_DATE} → today)`);
+  console.log(`  ✓ AF–AI written — ${written} SKUs had 7d sales (window: ${D7_AGO_DATE} → today)`);
 }
 
 
@@ -1773,7 +1772,7 @@ async function main() {
   await write7dColumns(token, salesMap, skuTranslation);
 
   console.log("\n" + "═".repeat(58));
-  console.log("  Done. Cols G/K/L/N/U written from Shopify; M/R/T/V/W/X/Y/Z/AA/AB/AC derived; NPD flags (Q) + focus flags (P) synced; D2C AF = Mother WH stock (other warehouse); AG/AH = 7d sold/DRR.");
+  console.log("  Done. Cols G/K/L/N/U written from Shopify; M/R/T/V/W/X/Y/Z/AA/AB/AC derived; NPD flags (Q) + focus flags (P) synced; D2C AE = Mother WH stock; AF/AG = 7d sold/DRR; AH/AI = 15d sold/DRR.");
   console.log("═".repeat(58) + "\n");
 }
 
