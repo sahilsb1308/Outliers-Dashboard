@@ -1546,14 +1546,21 @@ async function writeMotherWHStock(token) {
     afData.push({ range: `${D2C_TAB}!AF${row}`, values: [[value]] });
   }
 
-  // 4. Force NUMBER format on AF (col index 31) to prevent date-serial rendering
+  // 4. Force NUMBER format on AE+AF (col indices 30–31) to prevent date-serial rendering
   await withRetry(() => httpsRequest("POST",
     `https://sheets.googleapis.com/v4/spreadsheets/${D2C_SHEET_ID}:batchUpdate`,
     JSON.stringify({ requests: [{ repeatCell: {
-      range: { sheetId: D2C_TAB_GID, startRowIndex: 1, endRowIndex: 2000, startColumnIndex: 31, endColumnIndex: 32 },
+      range: { sheetId: D2C_TAB_GID, startRowIndex: 1, endRowIndex: 2000, startColumnIndex: 30, endColumnIndex: 32 },
       cell: { userEnteredFormat: { numberFormat: { type: "NUMBER", pattern: "0" } } },
       fields: "userEnteredFormat.numberFormat"
     }}]}),
+    { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
+  ));
+
+  // Clear stale AE data left over from old runs (AE is now owned by projected_demand.py)
+  await withRetry(() => httpsRequest("POST",
+    `https://sheets.googleapis.com/v4/spreadsheets/${D2C_SHEET_ID}/values:batchClear`,
+    JSON.stringify({ ranges: [`${D2C_TAB}!AE2:AE2000`] }),
     { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
   ));
 
