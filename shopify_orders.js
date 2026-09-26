@@ -65,6 +65,7 @@ const NPD_TABS      = [
 ];
 
 const SKU_COL              = "B";
+const MRP_COL              = "F";   // MRP (compare_at_price from Shopify)
 const RTO_STOCK_COL        = "H";   // RTO Stock
 const INWARD_STOCK_COL     = "I";   // Inward Stock
 const UNITS_COL            = "J";   // Net Items Sold (Total Sold Last 30D)
@@ -83,7 +84,7 @@ const PROJ_REV_COL         = "Z";   // Projected Revenue 30d
 const STOCK_STATUS_COL     = "AA";  // Stock Status (output)
 const PRIORITY_COL         = "AB";  // Priority P0–P3 (output)
 const REV_CONTRIB_COL      = "AC";  // Revenue Contribution %
-const UNITS_TO_FILL_COL    = "AE";  // Units to be Filled = MAX(0, Y − U)
+// AE (Units to be Filled) is written by projected_demand.py, not here
 const TOTAL_SOLD_15D_COL   = "AI";  // Total Sold (15D)
 const DRR_15D_COL          = "AJ";  // DRR (15D) = Total Sold 15D / 15
 const NPD_START_DATE_COL   = "AK";  // NPD Start Date — stamped on first NPD; cleared on expiry
@@ -436,7 +437,7 @@ async function fetchSalesReport() {
 // is missed. Ending Inventory Units = variant.inventory_quantity.
 // ═════════════════════════════════════════════════════════════════════════════
 
-async function fetchProductsByStatus(status, stockMap, productNameMap) {
+async function fetchProductsByStatus(status, stockMap, productNameMap, rawSkuMap = {}, rawMrpMap = {}) {
   let pageInfo      = null;
   let batch         = 0;
   let totalProducts = 0;
@@ -460,6 +461,13 @@ async function fetchProductsByStatus(status, stockMap, productNameMap) {
         if (!variant.sku?.trim()) continue;
         const sku = normalizeSKU(variant.sku);
         stockMap[sku] = (stockMap[sku] || 0) + (Number(variant.inventory_quantity) || 0);
+        // Keep original Shopify SKU for column-B sync
+        if (!rawSkuMap[sku]) rawSkuMap[sku] = variant.sku.trim();
+        // Keep MRP (compare_at_price is the printed price; fall back to price)
+        if (!rawMrpMap[sku]) {
+          const mrp = parseFloat(variant.compare_at_price || variant.price || 0);
+          if (mrp > 0) rawMrpMap[sku] = mrp;
+        }
         // Capture product name from inventory (more reliable than order line items)
         if (!productNameMap[sku]) {
           const vt = (variant.title || "").trim();
@@ -481,16 +489,18 @@ async function fetchInventoryReport() {
   const stockMap      = {};
   const activeOnlyMap = {};
   const productNameMap = {};
+  const rawSkuMap     = {};
+  const rawMrpMap     = {};
 
   // Fetch all three statuses — Shopify only returns active by default
-  const active   = await fetchProductsByStatus("active",   stockMap, productNameMap);
+  const active   = await fetchProductsByStatus("active",   stockMap, productNameMap, rawSkuMap, rawMrpMap);
   await fetchProductsByStatus("active", activeOnlyMap, {});
-  const archived = await fetchProductsByStatus("archived", stockMap, productNameMap);
-  const draft    = await fetchProductsByStatus("draft",    stockMap, productNameMap);
+  const archived = await fetchProductsByStatus("archived", stockMap, productNameMap, rawSkuMap, rawMrpMap);
+  const draft    = await fetchProductsByStatus("draft",    stockMap, productNameMap, rawSkuMap, rawMrpMap);
 
   const total = active + archived + draft;
   console.log(`  ✓ ${total} total products (${active} active, ${archived} archived, ${draft} draft) → ${Object.keys(stockMap).length} unique SKUs`);
-  return { stockMap, activeOnlyMap, productNameMap };
+  return { stockMap, activeOnlyMap, productNameMap, rawSkuMap, rawMrpMap };
 }
 
 // ─── New-product detection ───────────────────────────────────────────────────
@@ -696,10 +706,51 @@ async function readSheetSKUs(token) {
   return skuValues
     .map((row, i) => ({
       sku:      normalizeSKU(row[0] ?? ""),
+      rawSku:   (row[0] ?? "").trim(),
       row:      DATA_START_ROW + i,
       priority: (aaValues[i]?.[0] ?? "").toString().trim().toUpperCase(),
     }))
     .filter((r) => r.sku !== "");
+}
+
+// ─── SKU + MRP sync ───────────────────────────────────────────────────────────
+async function syncSheetProductData(token, skuRows, skuTranslation, rawSkuMap, rawMrpMap) {
+  const updates = [];
+
+  for (const { sku: normalizedSheetSku, rawSku, row } of skuRows) {
+    const normalizedShopifySku = skuTranslation[normalizedSheetSku];
+    if (!normalizedShopifySku) continue;
+
+    // SKU sync: update col B when Shopify's canonical form differs from the sheet
+    const rawShopifySku = rawSkuMap[normalizedShopifySku];
+    if (rawShopifySku && rawShopifySku !== rawSku) {
+      updates.push({ range: `${SHEET_TAB}!${SKU_COL}${row}`, values: [[rawShopifySku]] });
+    }
+
+    // MRP sync: update col F with compare_at_price (or price) from Shopify
+    const mrp = rawMrpMap[normalizedShopifySku];
+    if (mrp !== undefined) {
+      updates.push({ range: `${SHEET_TAB}!${MRP_COL}${row}`, values: [[mrp]] });
+    }
+  }
+
+  if (updates.length === 0) {
+    console.log("  ✓ SKU/MRP sync: no changes needed");
+    return;
+  }
+
+  const res = await withRetry(() =>
+    httpsRequest(
+      "POST",
+      `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values:batchUpdate`,
+      JSON.stringify({ valueInputOption: "RAW", data: updates }),
+      { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
+    )
+  );
+  if (res.statusCode !== 200) throw new Error(`SKU/MRP sync error ${res.statusCode}: ${res.body.slice(0, 300)}`);
+  const skuCount = updates.filter(u => u.range.includes(`!${SKU_COL}`)).length;
+  const mrpCount = updates.filter(u => u.range.includes(`!${MRP_COL}`)).length;
+  console.log(`  ✓ SKU/MRP sync: updated ${skuCount} SKUs and ${mrpCount} MRPs`);
 }
 
 // ─── OOS days helpers ─────────────────────────────────────────────────────────
@@ -1304,11 +1355,14 @@ async function writeProjectedDemand(token, skuRows) {
     (JSON.parse(batchRes.body).valueRanges ?? []).map(vr => vr.values ?? []);
 
   // Pre-compute total N and median N for bestseller + revenue contribution
+  // Include ALL non-blank values for totalN (revenue share), but only positive
+  // values for nMedian so products with zero sales don't drag the threshold to 0.
   const nNonBlank = skuRows
     .map(({ row }) => { const raw = (nVals[row - DATA_START_ROW]?.[0] ?? "").trim(); return raw !== "" ? parseFloat(raw) || 0 : null; })
     .filter(v => v !== null);
-  const totalN  = nNonBlank.reduce((s, v) => s + v, 0);
-  const nMedian = calcMedian(nNonBlank);
+  const totalN    = nNonBlank.reduce((s, v) => s + v, 0);
+  const nPositive = nNonBlank.filter(v => v > 0);
+  const nMedian   = calcMedian(nPositive);
 
   const totalRows = lastRow - DATA_START_ROW + 1;
   const colM  = Array.from({ length: totalRows }, () => [0]);
@@ -1322,7 +1376,6 @@ async function writeProjectedDemand(token, skuRows) {
   const colZ  = Array.from({ length: totalRows }, () => [""]);
   const colAA = Array.from({ length: totalRows }, () => ["P3"]);
   const colAB = Array.from({ length: totalRows }, () => [0]);
-  const colAD = Array.from({ length: totalRows }, () => [""]);
   const rowState = new Map(); // i → {npdFlag, promoQ, isBestseller} for second pass
 
   for (const { sku, row, priority } of skuRows) {
@@ -1340,8 +1393,8 @@ async function writeProjectedDemand(token, skuRows) {
     const nVal    = nRaw !== "" ? parseFloat(nRaw) || 0 : 0;
     const gVal    = gRaw !== "" ? parseFloat(gRaw) || 0 : 0;
     const sVal    = sRaw !== "" ? parseFloat(sRaw) || 0 : 0;
-    // Col R — Bestseller: 1 if M ≥ median of all non-blank M values
-    const isBestseller = nRaw !== "" && nVal >= nMedian ? 1 : 0;
+    // Col R — Bestseller: 1 if revenue is positive AND ≥ median of positive-revenue products
+    const isBestseller = nVal > 0 && nMedian > 0 && nVal >= nMedian ? 1 : 0;
     colR[i] = [isBestseller];
     rowState.set(i, { npdFlag, promoQ, isBestseller });
 
@@ -1385,7 +1438,7 @@ async function writeProjectedDemand(token, skuRows) {
     colZ[i] = [drr !== null ? calcStockStatus(doiVal) : ""];
 
     // No DRR → blank demand columns
-    if (drr === null) { colW[i] = [""]; colX[i] = [""]; colAD[i] = [""]; continue; }
+    if (drr === null) { colW[i] = [""]; colX[i] = [""]; continue; }
 
     const multiplier = mScore;
     const demand7d   = Math.round(drr *  7 * multiplier);
@@ -1395,7 +1448,6 @@ async function writeProjectedDemand(token, skuRows) {
     colW[i]  = [demand7d];
     colX[i]  = [demand30d];
     colY[i]  = [parseFloat((demand30d * asp).toFixed(2))];
-    colAD[i] = [Math.max(0, parseFloat((demand30d - gVal).toFixed(2)))];
   }
 
   const make = col => `${SHEET_TAB}!${col}${DATA_START_ROW}:${col}${lastRow}`;
@@ -1415,13 +1467,12 @@ async function writeProjectedDemand(token, skuRows) {
         { range: make(STOCK_STATUS_COL),  values: colZ  },
         { range: make(PRIORITY_COL),      values: colAA },
         { range: make(REV_CONTRIB_COL),   values: colAB },
-        { range: make(UNITS_TO_FILL_COL), values: colAD },
       ]}),
       { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
     )
   );
   if (res.statusCode !== 200) throw new Error(`Derived cols write error ${res.statusCode}: ${res.body}`);
-  console.log(`  ✓ Cols L/R/T/V/W/X/Y/Z/AA/AB/AC/AD written for ${skuRows.length} rows`);
+  console.log(`  ✓ Cols L/R/T/V/W/X/Y/Z/AA/AB/AC written for ${skuRows.length} rows`);
 }
 
 
@@ -1646,7 +1697,7 @@ async function main() {
 
   // Step 3 — fetch inventory
   console.log("\n[4/11] Fetching inventory (Month End Inventory Snapshot)...");
-  const { stockMap, activeOnlyMap, productNameMap } = await fetchInventoryReport();
+  const { stockMap, activeOnlyMap, productNameMap, rawSkuMap, rawMrpMap } = await fetchInventoryReport();
 
   // Step 4 — build universal SKU translation map for ALL sheet SKUs
   console.log("\n[5/11] Building SKU translation map and writing to sheet...");
@@ -1665,6 +1716,10 @@ async function main() {
 
   // Step 5 — write to existing sheet rows using translated SKUs
   await writeToSheet(token, skuRows, salesMap, stockMap, skuTranslation);
+
+  // Step 5b — sync SKUs and MRPs from Shopify back to the sheet
+  console.log("\n[5b] Syncing SKUs and MRPs from Shopify...");
+  await syncSheetProductData(token, skuRows, skuTranslation, rawSkuMap, rawMrpMap);
 
   // Step 6 — append new rows for SKUs sold in last 3 days but not yet in sheet
   console.log("\n[6/10] Checking for new products sold in last 30 days...");
@@ -1717,7 +1772,7 @@ async function main() {
   await write7dColumns(token, salesMap, skuTranslation);
 
   console.log("\n" + "═".repeat(58));
-  console.log("  Done. Cols G/K/L/N/U written from Shopify; M/R/T/U/V/W/X/Y/AB/AC/AD derived; NPD flags (AE) + focus flags (Q) synced; D2C AF = Mother WH stock; AG/AH = 7d sold/DRR.");
+  console.log("  Done. Cols G/K/L/N/U written from Shopify; M/R/T/V/W/X/Y/Z/AA/AB/AC derived; NPD flags (Q) + focus flags (P) synced; D2C AF = Mother WH stock (other warehouse); AG/AH = 7d sold/DRR.");
   console.log("═".repeat(58) + "\n");
 }
 

@@ -179,6 +179,8 @@ def main():
             prefix_to_k[prefix] = k_val
 
     # ── Pre-pass: total N and median N for AB and R ───────────────────────────
+    # n_median uses only products with positive revenue so that zero-sale products
+    # don't drag the threshold to 0 (which would make every product a bestseller).
     total_n = 0.0
     n_nonblank = []
     for row in dash_rows[1:]:
@@ -189,7 +191,8 @@ def main():
         if n_val is not None:
             total_n += n_val
             n_nonblank.append(n_val)
-    n_median = statistics.median(n_nonblank) if n_nonblank else 0
+    n_positive = [v for v in n_nonblank if v > 0]
+    n_median = statistics.median(n_positive) if n_positive else 0
 
     # ── Pre-pass: raw DRR for all SKUs (needed for kit DRR contribution) ──────
     sku_to_drr:    dict[str, float] = {}
@@ -255,9 +258,9 @@ def main():
         drr = calc_drr(k_val, oos_days)
         drr_results.append([drr if drr is not None else ""])
 
-        # R – Bestseller
+        # R – Bestseller: positive revenue AND >= median of positive-revenue products
         n_raw = to_float(safe_col(row, COL_REVENUE))
-        is_bestseller = 1 if (n_raw is not None and n_raw >= n_median) else 0
+        is_bestseller = 1 if (n_raw is not None and n_raw > 0 and n_median > 0 and n_raw >= n_median) else 0
         bestseller_results.append([is_bestseller])
 
         # AC – Revenue Contribution %
