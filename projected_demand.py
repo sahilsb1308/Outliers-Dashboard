@@ -330,8 +330,11 @@ def main():
         proj_rev = round(demand_30d * asp, 2)
         proj_rev_results.append([proj_rev])
 
-        # AD – Units to be Filled = MAX(0, Y − U)
-        fill_rate_results.append([max(0, demand_30d - g_val)])
+        # AD – Units to be Filled = MAX(0, Y − U); blank when no demand signal
+        if demand_30d > 0:
+            fill_rate_results.append([max(0, demand_30d - g_val)])
+        else:
+            fill_rate_results.append(blank)
 
     # ── Batch write all output columns ────────────────────────────────────────
     n_rows   = len(drr_results)
