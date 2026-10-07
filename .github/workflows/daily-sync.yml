@@ -18,6 +18,14 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: pip install gspread google-auth
+
       - name: Write Google service account key
         run: echo '${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}' > service_account.json
 
@@ -27,3 +35,8 @@ jobs:
           TOKEN_API_KEY: ${{ secrets.TOKEN_API_KEY }}
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
         run: node shopify_orders.js
+
+      - name: Run projected demand calculations
+        env:
+          GOOGLE_SERVICE_ACCOUNT_FILE: service_account.json
+        run: python projected_demand.py
